@@ -21,6 +21,8 @@ $conn->query("CREATE TABLE IF NOT EXISTS films (
     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 )");
 
+session_start();
+
 // Tambah film baru
 if (isset($_POST['add'])) {
     $title = $_POST['title'];
@@ -29,15 +31,26 @@ if (isset($_POST['add'])) {
 
     $stmt = $conn->prepare("INSERT INTO films (title, description, download_link) VALUES (?, ?, ?)");
     $stmt->bind_param("sss", $title, $description, $download_link);
-    $stmt->execute();
-    header("Location: ".$_SERVER['PHP_SELF']);
+
+    if ($stmt->execute()) {
+        $_SESSION['alert'] = ['type' => 'success', 'message' => 'Film berhasil ditambahkan!'];
+    } else {
+        $_SESSION['alert'] = ['type' => 'error', 'message' => 'Film gagal ditambahkan!'];
+    }
+
+    header("Location: ".$_SERVER['PHP_SELF']); 
+    exit();
 }
 
-// Hapus film
+// Hapus film (dengan prepared statement untuk keamanan)
 if (isset($_GET['delete'])) {
     $id = $_GET['delete'];
-    $conn->query("DELETE FROM films WHERE id=$id");
+    $stmt = $conn->prepare("DELETE FROM films WHERE id=?");
+    $stmt->bind_param("i", $id);
+    $stmt->execute();
+    $_SESSION['alert'] = ['type' => 'success', 'message' => 'Film berhasil dihapus!'];
     header("Location: ".$_SERVER['PHP_SELF']);
+    exit();
 }
 
 // Ambil data film untuk edit
@@ -58,7 +71,10 @@ if (isset($_POST['update'])) {
     $stmt = $conn->prepare("UPDATE films SET title=?, description=?, download_link=? WHERE id=?");
     $stmt->bind_param("sssi", $title, $description, $download_link, $id);
     $stmt->execute();
+
+    $_SESSION['alert'] = ['type' => 'success', 'message' => 'Film berhasil diperbarui!'];
     header("Location: ".$_SERVER['PHP_SELF']);
+    exit();
 }
 
 // Ambil semua film
@@ -174,17 +190,17 @@ button:hover {
 }
 .actions .edit {
     color: white;
-    background: #ffc107;
+    background: #007bff; /* Warna biru */
 }
 .actions .edit:hover {
-    background: #e0a800;
+    background: #0056b3; /* Warna biru yang lebih gelap saat hover */
 }
 .actions .delete {
     color: white;
-    background: #dc3545;
+    background: red; /* Warna merah */
 }
 .actions .delete:hover {
-    background: #c82333;
+    background: #c82333; /* Warna merah yang lebih gelap saat hover */
 }
 
 /* Responsive Design */
@@ -222,17 +238,43 @@ button:hover {
     <div class="cards">
         <?php while ($film = $films->fetch_assoc()): ?>
         <div class="card">
-            <h3><?= $film['title'] ?></h3>
-            <p><?= $film['description'] ?></p>
-            <a href="<?= $film['download_link'] ?>" target="_blank">Download</a>
+            <h3><?= htmlspecialchars($film['title']) ?></h3>
+            <p><?= htmlspecialchars($film['description']) ?></p>
+            <a href="<?= htmlspecialchars($film['download_link']) ?>" target="_blank">Download</a>
             <div class="actions">
-                <a href="?edit=<?= $film['id'] ?>">✏ Edit</a>
-                <a href="?delete=<?= $film['id'] ?>" onclick="return confirm('Hapus film ini?')">🗑 Hapus</a>
+                <a href="?edit=<?= $film['id'] ?>" class="edit">✏ Edit</a>
+                <a href="#" class="delete-btn" data-id="<?= $film['id'] ?>">🗑 Hapus</a>
             </div>
         </div>
         <?php endwhile; ?>
     </div>
 </div>
+
+<script src="https://cdn.jsdelivr.net/npm/sweetalert2@11"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+    <?php if (isset($_SESSION['alert'])): ?>
+        Swal.fire({ title: "<?= $_SESSION['alert']['type'] == 'success' ? 'Berhasil!' : 'Gagal!' ?>", 
+                    text: "<?= $_SESSION['alert']['message'] ?>", 
+                    icon: "<?= $_SESSION['alert']['type'] ?>", 
+                    timer: 2000, 
+                    timerProgressBar: true, 
+                    showConfirmButton: false });
+        <?php unset($_SESSION['alert']); ?>
+    <?php endif; ?>
+
+    document.querySelectorAll(".delete-btn").forEach(button => {
+        button.addEventListener("click", function (event) {
+            event.preventDefault();
+            let filmId = this.getAttribute("data-id");
+            Swal.fire({
+                title: "Apakah kamu yakin?", text: "Film yang dihapus tidak bisa dikembalikan!", icon: "warning",
+                showCancelButton: true, confirmButtonText: "Ya, Hapus!", cancelButtonText: "Batal"
+            }).then((result) => { if (result.isConfirmed) window.location.href = "?delete=" + filmId; });
+        });
+    });
+});
+</script>
 
 </body>
 </html>
